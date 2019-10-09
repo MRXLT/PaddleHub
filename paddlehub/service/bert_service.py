@@ -1,9 +1,18 @@
 # coding:utf-8
+import sys
 import time
 import numpy as np
 import paddlehub as hub
-import httplib
 import json
+
+_ver = sys.version_info
+is_py2 = (_ver[0] == 2)
+is_py3 = (_ver[0] == 3)
+
+if is_py2:
+    import httplib
+if is_py3:
+    import http.client as httplib
 
 
 class BertService():
@@ -23,15 +32,14 @@ class BertService():
                 max_seq_len=128)
             self.reader_flag = True
 
-        return self.reader.data_generator(batch_size=1,
-                                          phase='predict',
-                                          data=text)
+        return self.reader.data_generator(
+            batch_size=1, phase='predict', data=text)
 
     def encode(self, text):
         if type(text) != list:
             raise TypeError('Only support list')
+        start = time.time()
         data_generator = self.data_convert(text)
-        #start = time.time()
         result = []
         for run_step, batch in enumerate(data_generator(), start=0):
             request = []
@@ -47,12 +55,17 @@ class BertService():
                 request.append(instance_dict)
             request = {"instances": request}
             request_msg = json.dumps(request)
-            start = time.time()
+            #start = time.time()
             try:
                 self.con.request('POST', "/BertService/inference", request_msg,
                                  {"Content-Type": "application/json"})
                 response = self.con.getresponse()
-                result.append(response.read())
+                response_msg = response.read()
+                response_msg = json.loads(response_msg)
+                for msg in response_msg["instances"]:
+                    for sample in msg["instances"]:
+                        result.append(sample["values"])
+
             except httplib.HTTPException as e:
                 print(e.reason)
 
@@ -66,21 +79,12 @@ class BertService():
 
 if __name__ == '__main__':
     bc = BertService()
-    bc.connect('10.199.240.57', 8010)
+    bc.connect('127.0.0.1', 8010)
     result = bc.encode([
         [
             "As a woman you shouldn't complain about cleaning up your house. &amp; as a man you should always take the trash out..."
-        ], ["hello"],
-        [
-            "As a woman you shouldn't complain about cleaning up your house. &amp; as a man you should always take the trash out..."
-        ]
+        ],
+        ["hello"],
     ])
-    result = bc.encode([
-        [
-            "As a woman you shouldn't complain about cleaning up your house. &amp; as a man you should always take the trash out..."
-        ], ["hello"],
-        [
-            "As a woman you shouldn't complain about cleaning up your house. &amp; as a man you should always take the trash out..."
-        ]
-    ])
+    print(result)
     bc.close()
