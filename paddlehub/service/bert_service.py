@@ -18,6 +18,7 @@ if is_py3:
 class BertService():
     def __init__(self):
         self.reader_flag = False
+        self.batch_size = 1
 
     def connect(self, ip, port):
         self.con = httplib.HTTPConnection(ip, port)
@@ -33,17 +34,18 @@ class BertService():
             self.reader_flag = True
 
         return self.reader.data_generator(
-            batch_size=1, phase='predict', data=text)
+            batch_size=self.batch_size, phase='predict', data=text)
 
     def encode(self, text):
         if type(text) != list:
             raise TypeError('Only support list')
-        start = time.time()
+        #start = time.time()
+        #self.batch_size = len(text)
         data_generator = self.data_convert(text)
         result = []
-        for run_step, batch in enumerate(data_generator(), start=0):
-            request = []
-            #start = time.time()
+        start = time.time()
+        request = []
+        for run_step, batch in enumerate(data_generator(), start=1):
             for sample in batch:
                 instance_dict = {}
                 instance_dict["token_ids"] = sample[0].reshape(-1).tolist()
@@ -52,15 +54,18 @@ class BertService():
                 instance_dict["position_ids"] = sample[1].reshape(-1).tolist()
                 instance_dict["input_masks"] = sample[3].reshape(-1).tolist()
                 instance_dict["max_seq_len"] = 128
-                request.append(instance_dict)
-            request = {"instances": request}
-            request_msg = json.dumps(request)
-            #start = time.time()
+            request.append(instance_dict)
+        request = {"instances": request}
+        request_msg = json.dumps(request)
+        #print(request_msg)
+        request_start = time.time()
+        if 1:
             try:
                 self.con.request('POST', "/BertService/inference", request_msg,
                                  {"Content-Type": "application/json"})
                 response = self.con.getresponse()
                 response_msg = response.read()
+                #print(response_msg)
                 response_msg = json.loads(response_msg)
                 for msg in response_msg["instances"]:
                     for sample in msg["instances"]:
@@ -68,9 +73,11 @@ class BertService():
 
             except httplib.HTTPException as e:
                 print(e.reason)
-
-            print('cost :' + str(time.time() - start))
+            request_time = time.time() - request_start
+            total_time = time.time() - start
             start = time.time()
+        #return [total_time, request_time, response_msg['op_time'],
+        #        response_msg['infer_time']]
         return result
 
     def close(self):
