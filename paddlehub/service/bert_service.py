@@ -27,7 +27,7 @@ class BertService():
 
     def data_convert(self, text):
         if self.reader_flag == False:
-            module = hub.Module(name="bert_uncased_L-24_H-1024_A-16")
+            module = hub.Module(name="bert_uncased_L-12_H-768_A-12")
             dataset = hub.dataset.ChnSentiCorp()
             self.reader = hub.reader.ClassifyReader(
                 dataset=dataset,
@@ -99,11 +99,6 @@ class BertService():
 if __name__ == '__main__':
     bc = BertService()
     bc.connect('127.0.0.1', 8010)
-    result = bc.encode([
-        [
-            "As a woman you shouldn't complain about cleaning up your house. &amp; as a man you should always take the trash out..."
-        ],
-        ["hello"],
-    ])
+    result = bc.encode([["hello"], ])
     print(result)
     bc.close()
