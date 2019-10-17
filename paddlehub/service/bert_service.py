@@ -16,18 +16,26 @@ if is_py3:
 
 
 class BertService():
-    def __init__(self):
+    def __init__(self,
+                 profile=False,
+                 max_seq_len=128,
+                 model_name="bert_uncased_L-12_H-768_A-12",
+                 emb_size=768,
+                 show_ids=False):
         self.reader_flag = False
         self.batch_size = 1
-        self.embedding_size = 768
-        self.max_seq_len = 128
+        self.embedding_size = emb_size
+        self.max_seq_len = max_seq_len
+        self.profile = profile
+        self.model_name = model_name
+        self.show_ids = show_ids
 
-    def connect(self, ip, port):
+    def connect(self, ip='127.0.0.1', port=8010):
         self.con = httplib.HTTPConnection(ip, port)
 
     def data_convert(self, text):
         if self.reader_flag == False:
-            module = hub.Module(name="bert_uncased_L-12_H-768_A-12")
+            module = hub.Module(name=self.model_name)
             dataset = hub.dataset.ChnSentiCorp()
             self.reader = hub.reader.ClassifyReader(
                 dataset=dataset,
@@ -64,11 +72,13 @@ class BertService():
                 instance_dict["input_masks"] = mask_list[si * self.max_seq_len:(
                     si + 1) * self.max_seq_len]
                 instance_dict["max_seq_len"] = self.max_seq_len
+                instance_dict["emb_size"] = self.embedding_size
                 request.append(instance_dict)
             copy_time = time.time() - copy_start
         request = {"instances": request}
         request_msg = json.dumps(request)
-        #print(request_msg)
+        if self.show_ids:
+            print(request_msg)
         request_start = time.time()
         try:
             self.con.request('POST', "/BertService/inference", request_msg,
@@ -86,19 +96,27 @@ class BertService():
         request_time = time.time() - request_start
         total_time = time.time() - start
         start = time.time()
-        return [
-            total_time, request_time, response_msg['op_time'],
-            response_msg['infer_time'], copy_time
-        ]
-        #return result
+        if self.profile:
+            return [
+                total_time, request_time, response_msg['op_time'],
+                response_msg['infer_time'], copy_time
+            ]
+        else:
+            return result
 
     def close(self):
         self.con.close()
 
 
-if __name__ == '__main__':
-    bc = BertService()
+def test():
+
+    bc = BertService(
+        model_name='bert_chinese_L-12_H-768_A-12', emb_size=768, show_ids=True)
     bc.connect('127.0.0.1', 8010)
     result = bc.encode([["hello"], ])
-    print(result)
+    print(len(result[0]))
     bc.close()
+
+
+if __name__ == '__main__':
+    test()
