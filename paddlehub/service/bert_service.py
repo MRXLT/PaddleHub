@@ -21,7 +21,8 @@ class BertService():
                  max_seq_len=128,
                  model_name="bert_uncased_L-12_H-768_A-12",
                  emb_size=768,
-                 show_ids=False):
+                 show_ids=False,
+                 do_lower_case=True):
         self.reader_flag = False
         self.batch_size = 1
         self.embedding_size = emb_size
@@ -29,6 +30,7 @@ class BertService():
         self.profile = profile
         self.model_name = model_name
         self.show_ids = show_ids
+        self.do_lower_case = do_lower_case
 
     def connect(self, ip='127.0.0.1', port=8010):
         self.con = httplib.HTTPConnection(ip, port)
@@ -40,7 +42,8 @@ class BertService():
             self.reader = hub.reader.ClassifyReader(
                 dataset=dataset,
                 vocab_path=module.get_vocab_path(),
-                max_seq_len=self.max_seq_len)
+                max_seq_len=self.max_seq_len,
+                do_lower_case=self.do_lower_case)
             self.reader_flag = True
 
         return self.reader.data_generator(
@@ -111,10 +114,13 @@ class BertService():
 def test():
 
     bc = BertService(
-        model_name='bert_chinese_L-12_H-768_A-12', emb_size=768, show_ids=True)
+        model_name='bert_multi_cased_L-12_H-768_A-12',
+        emb_size=768,
+        show_ids=True,
+        do_lower_case=False)
     bc.connect('127.0.0.1', 8010)
-    result = bc.encode([["hello"], ])
-    print(len(result[0]))
+    result = bc.encode([["As long as"], ])
+    print(result[0])
     bc.close()
 
 
