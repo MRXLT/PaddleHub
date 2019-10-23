@@ -24,16 +24,24 @@ class BertService():
                  show_ids=False,
                  do_lower_case=True):
         self.reader_flag = False
-        self.batch_size = 1
+        self.batch_size = 16
         self.embedding_size = emb_size
         self.max_seq_len = max_seq_len
         self.profile = profile
         self.model_name = model_name
         self.show_ids = show_ids
         self.do_lower_case = do_lower_case
+        self.con_list = []
+        self.con_index = 0
+        self.load_balance = 'random_robin'
 
     def connect(self, ip='127.0.0.1', port=8010):
-        self.con = httplib.HTTPConnection(ip, port)
+        con = httplib.HTTPConnection(ip, port)
+        self.con_list.append(con)
+
+    def connect_all(self, ip_list=['127.0.0.1'], port_list=[8010]):
+        for index, ip in enumerate(ip_list):
+            self.con_list.append(httplib.HTTPConnection(ip, port_list[index]))
 
     def data_convert(self, text):
         if self.reader_flag == False:
@@ -49,16 +57,41 @@ class BertService():
         return self.reader.data_generator(
             batch_size=self.batch_size, phase='predict', data=text)
 
+    def infer(self, request_msg):
+
+        try:
+            cur_con = self.con_list[self.con_index]
+            cur_con.request('POST', "/BertService/inference", request_msg,
+                            {"Content-Type": "application/json"})
+            response = cur_con.getresponse()
+            response_msg = response.read()
+            #print(response_msg)
+            response_msg = json.loads(response_msg)
+            self.con_index += 1
+            self.con_index = self.con_index % len(self.con_list)
+            return response_msg
+
+        except BaseException as err:
+            del self.con_list[self.con_index]
+            print(err)
+            if len(self.con_list) == 0:
+                print('All server failed')
+                return 'fail'
+            else:
+                self.con_index = 0
+                return 'retry'
+
     def encode(self, text):
         if type(text) != list:
             raise TypeError('Only support list')
         #start = time.time()
         self.batch_size = len(text)
         data_generator = self.data_convert(text)
-        result = []
         start = time.time()
-        request = []
+        request_time = 0
+        result = []
         for run_step, batch in enumerate(data_generator(), start=1):
+            request = []
             copy_start = time.time()
             token_list = batch[0][0].reshape(-1).tolist()
             pos_list = batch[0][1].reshape(-1).tolist()
@@ -78,25 +111,23 @@ class BertService():
                 instance_dict["emb_size"] = self.embedding_size
                 request.append(instance_dict)
             copy_time = time.time() - copy_start
-        request = {"instances": request}
-        request_msg = json.dumps(request)
-        if self.show_ids:
-            print(request_msg)
-        request_start = time.time()
-        try:
-            self.con.request('POST', "/BertService/inference", request_msg,
-                             {"Content-Type": "application/json"})
-            response = self.con.getresponse()
-            response_msg = response.read()
-            #print(response_msg)
-            response_msg = json.loads(response_msg)
+            #request
+            request = {"instances": request}
+            request_msg = json.dumps(request)
+            if self.show_ids:
+                print(request_msg)
+            request_start = time.time()
+            response_msg = self.infer(request_msg)
+            while type(response_msg) == str and response_msg == 'retry':
+                print('infer failed, retry')
+                response_msg = self.infer(request_msg)
+
             for msg in response_msg["instances"]:
                 for sample in msg["instances"]:
                     result.append(sample["values"])
 
-        except httplib.HTTPException as e:
-            print(e.reason)
-        request_time = time.time() - request_start
+            #request end
+            request_time += time.time() - request_start
         total_time = time.time() - start
         start = time.time()
         if self.profile:
@@ -108,7 +139,8 @@ class BertService():
             return result
 
     def close(self):
-        self.con.close()
+        for con in self.con_list:
+            con.close()
 
 
 def test():
