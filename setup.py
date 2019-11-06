@@ -31,8 +31,8 @@ def python_version():
 max_version, mid_version, min_version = python_version()
 
 REQUIRED_PACKAGES = [
-    'six >= 1.10.0', 'protobuf >= 3.1.0', 'pyyaml', 'Pillow', 'requests',
-    'tb-paddle', 'tb-nightly', 'cma == 2.7.0'
+    'six >= 1.10.0', 'protobuf >= 3.6.0', 'pyyaml', 'Pillow', 'requests',
+    'tb-paddle', 'tensorboard >= 1.15', 'cma == 2.7.0', 'flask >= 1.1.0'
 ]
 
 if max_version < 3:
@@ -52,6 +52,18 @@ setup(
     author_email='paddle-dev@baidu.com',
     install_requires=REQUIRED_PACKAGES,
     packages=find_packages(),
+    package_data={
+        'paddlehub/serving/templates': [
+            'paddlehub/serving/templates/serving_config.json',
+            'paddlehub/serving/templates/main.html'
+        ]
+    },
+    include_package_data=True,
+    data_files=[('paddlehub/serving/templates', [
+        'paddlehub/serving/templates/serving_config.json',
+        'paddlehub/serving/templates/main.html'
+    ])],
+    include_data_files=True,
     # PyPI package information.
     classifiers=[
         'Development Status :: 4 - Beta',

@@ -46,10 +46,9 @@ class BertService():
     def data_convert(self, text):
         if self.reader_flag == False:
             module = hub.Module(name=self.model_name)
-            dataset = hub.dataset.ChnSentiCorp()
             self.reader = hub.reader.ClassifyReader(
-                dataset=dataset,
                 vocab_path=module.get_vocab_path(),
+                dataset=None,
                 max_seq_len=self.max_seq_len,
                 do_lower_case=self.do_lower_case)
             self.reader_flag = True
@@ -146,10 +145,10 @@ class BertService():
 def test():
 
     bc = BertService(
-        model_name='bert_multi_cased_L-12_H-768_A-12',
+        model_name='bert_uncased_L-12_H-768_A-12',
         emb_size=768,
         show_ids=True,
-        do_lower_case=False)
+        do_lower_case=True)
     bc.connect('127.0.0.1', 8010)
     result = bc.encode([["As long as"], ])
     print(result[0])
