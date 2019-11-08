@@ -34,6 +34,10 @@ class BertService():
         self.con_list = []
         self.con_index = 0
         self.load_balance = 'random_robin'
+        self.feed_var_names = ''
+        for i in range(4):
+            self.feed_var_names += '@HUB_' + model_name + '@read_file_0.tmp_' + str(
+                i) + ' '
 
     def connect(self, ip='127.0.0.1', port=8010):
         con = httplib.HTTPConnection(ip, port)
@@ -55,8 +59,9 @@ class BertService():
                 do_lower_case=self.do_lower_case)
             self.reader_flag = True
 
-        return self.reader.data_generator(
-            batch_size=self.batch_size, phase='predict', data=text)
+        return self.reader.data_generator(batch_size=self.batch_size,
+                                          phase='predict',
+                                          data=text)
 
     def infer(self, request_msg):
 
@@ -100,20 +105,30 @@ class BertService():
             mask_list = batch[0][3].reshape(-1).tolist()
             for si in range(self.batch_size):
                 instance_dict = {}
-                instance_dict["token_ids"] = token_list[si * self.max_seq_len:(
-                    si + 1) * self.max_seq_len]
-                instance_dict["sentence_type_ids"] = sent_list[
-                    si * self.max_seq_len:(si + 1) * self.max_seq_len]
-                instance_dict["position_ids"] = pos_list[si * self.max_seq_len:(
-                    si + 1) * self.max_seq_len]
-                instance_dict["input_masks"] = mask_list[si * self.max_seq_len:(
-                    si + 1) * self.max_seq_len]
-                instance_dict["max_seq_len"] = self.max_seq_len
-                instance_dict["emb_size"] = self.embedding_size
+                instance_dict["token_ids"] = token_list[si *
+                                                        self.max_seq_len:(si +
+                                                                          1) *
+                                                        self.max_seq_len]
+                instance_dict["sentence_type_ids"] = sent_list[si *
+                                                               self.max_seq_len:
+                                                               (si + 1) *
+                                                               self.max_seq_len]
+                instance_dict["position_ids"] = pos_list[si *
+                                                         self.max_seq_len:(si +
+                                                                           1) *
+                                                         self.max_seq_len]
+                instance_dict["input_masks"] = mask_list[si *
+                                                         self.max_seq_len:(si +
+                                                                           1) *
+                                                         self.max_seq_len]
                 request.append(instance_dict)
+
             copy_time = time.time() - copy_start
             #request
             request = {"instances": request}
+            request["max_seq_len"] = self.max_seq_len
+            request["emb_size"] = self.embedding_size
+            #request["feed_var_names"] = self.feed_var_names
             request_msg = json.dumps(request)
             if self.show_ids:
                 print(request_msg)
@@ -146,13 +161,14 @@ class BertService():
 
 def test():
 
-    bc = BertService(
-        model_name='bert_uncased_L-12_H-768_A-12',
-        emb_size=768,
-        show_ids=True,
-        do_lower_case=True)
+    bc = BertService(model_name='bert_uncased_L-12_H-768_A-12',
+                     emb_size=768,
+                     show_ids=True,
+                     do_lower_case=True)
     bc.connect('127.0.0.1', 8010)
-    result = bc.encode([["As long as"], ])
+    result = bc.encode([
+        ["As long as"],
+    ])
     print(result[0])
     bc.close()
 
