@@ -39,9 +39,11 @@ class BertService():
         con = httplib.HTTPConnection(ip, port)
         self.con_list.append(con)
 
-    def connect_all(self, ip_list=['127.0.0.1'], port_list=[8010]):
-        for index, ip in enumerate(ip_list):
-            self.con_list.append(httplib.HTTPConnection(ip, port_list[index]))
+    def connect_all_server(self, server_list):
+        for server_str in server_list:
+            ip, port = server_str.split(':')
+            port = int(port)
+            self.con_list.append(httplib.HTTPConnection(ip, port))
 
     def data_convert(self, text):
         if self.reader_flag == False:
