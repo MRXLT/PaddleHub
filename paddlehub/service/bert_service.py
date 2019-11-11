@@ -4,6 +4,7 @@ import time
 import numpy as np
 import paddlehub as hub
 import json
+from paddlehub.common.logger import logger
 
 _ver = sys.version_info
 is_py2 = (_ver[0] == 2)
@@ -34,13 +35,16 @@ class BertService():
         self.con_list = []
         self.con_index = 0
         self.load_balance = 'random_robin'
+        self.server_list = []
 
     def connect(self, ip='127.0.0.1', port=8010):
+        self.server_list.append(ip + ':' + str(port))
         con = httplib.HTTPConnection(ip, port)
         self.con_list.append(con)
 
     def connect_all_server(self, server_list):
         for server_str in server_list:
+            self.server_list.append(server_str)
             ip, port = server_str.split(':')
             port = int(port)
             self.con_list.append(httplib.HTTPConnection(ip, port))
@@ -66,17 +70,18 @@ class BertService():
                             {"Content-Type": "application/json"})
             response = cur_con.getresponse()
             response_msg = response.read()
-            #print(response_msg)
             response_msg = json.loads(response_msg)
             self.con_index += 1
             self.con_index = self.con_index % len(self.con_list)
             return response_msg
 
         except BaseException as err:
+            logger.warning("Infer Error with server {} : {}".format(
+                self.server_list[self.con_index], err))
             del self.con_list[self.con_index]
-            print(err)
+            del self.server_list[self.con_index]
             if len(self.con_list) == 0:
-                print('All server failed')
+                logger.error('All server failed, process will exit')
                 return 'fail'
             else:
                 self.con_index = 0
@@ -116,11 +121,11 @@ class BertService():
             request = {"instances": request}
             request_msg = json.dumps(request)
             if self.show_ids:
-                print(request_msg)
+                logger.info(request_msg)
             request_start = time.time()
             response_msg = self.infer(request_msg)
             while type(response_msg) == str and response_msg == 'retry':
-                print('infer failed, retry')
+                logger.info('Try to connect another servers')
                 response_msg = self.infer(request_msg)
 
             for msg in response_msg["instances"]:
