@@ -36,6 +36,10 @@ class BertService():
         self.con_index = 0
         self.load_balance = 'random_robin'
         self.server_list = []
+        self.feed_var_names = ''
+        for i in range(4):
+            self.feed_var_names += '@HUB_' + model_name + '@read_file_0.tmp_' + str(
+                i) + ' '
 
     def connect(self, ip='127.0.0.1', port=8010):
         self.server_list.append(ip + ':' + str(port))
@@ -113,12 +117,14 @@ class BertService():
                     si + 1) * self.max_seq_len]
                 instance_dict["input_masks"] = mask_list[si * self.max_seq_len:(
                     si + 1) * self.max_seq_len]
-                instance_dict["max_seq_len"] = self.max_seq_len
-                instance_dict["emb_size"] = self.embedding_size
                 request.append(instance_dict)
+
             copy_time = time.time() - copy_start
             #request
             request = {"instances": request}
+            request["max_seq_len"] = self.max_seq_len
+            request["emb_size"] = self.embedding_size
+            #request["feed_var_names"] = self.feed_var_names
             request_msg = json.dumps(request)
             if self.show_ids:
                 logger.info(request_msg)
