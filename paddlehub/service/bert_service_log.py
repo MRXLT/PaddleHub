@@ -4,6 +4,7 @@ import time
 import numpy as np
 import paddlehub as hub
 import json
+import random
 from paddlehub.common.logger import logger
 
 _ver = sys.version_info
@@ -34,7 +35,7 @@ class BertService():
         self.do_lower_case = do_lower_case
         self.con_list = []
         self.con_index = 0
-        self.load_balance = 'random_robin'
+        self.load_balance = 'random'
         self.server_list = []
 
     def connect(self, ip='127.0.0.1', port=8010):
@@ -59,33 +60,57 @@ class BertService():
                 do_lower_case=self.do_lower_case)
             self.reader_flag = True
 
-        return self.reader.data_generator(
-            batch_size=self.batch_size, phase='predict', data=text)
+        return self.reader.data_generator(batch_size=self.batch_size,
+                                          phase='predict',
+                                          data=text)
 
     def infer(self, request_msg):
+        if self.load_balance == 'random_robin':
+            try:
+                cur_con = self.con_list[self.con_index]
+                cur_con.request('POST', "/BertService/inference", request_msg,
+                                {"Content-Type": "application/json"})
+                response = cur_con.getresponse()
+                response_msg = response.read()
+                response_msg = json.loads(response_msg)
+                self.con_index += 1
+                self.con_index = self.con_index % len(self.con_list)
+                return response_msg
 
-        try:
-            cur_con = self.con_list[self.con_index]
-            cur_con.request('POST', "/BertService/inference", request_msg,
-                            {"Content-Type": "application/json"})
-            response = cur_con.getresponse()
-            response_msg = response.read()
-            response_msg = json.loads(response_msg)
-            self.con_index += 1
-            self.con_index = self.con_index % len(self.con_list)
-            return response_msg
+            except BaseException as err:
+                logger.warning("Infer Error with server {} : {}".format(
+                    self.server_list[self.con_index], err))
+                del self.con_list[self.con_index]
+                del self.server_list[self.con_index]
+                if len(self.con_list) == 0:
+                    logger.error('All server failed, process will exit')
+                    return 'fail'
+                else:
+                    self.con_index = 0
+                    return 'retry'
 
-        except BaseException as err:
-            logger.warning("Infer Error with server {} : {}".format(
-                self.server_list[self.con_index], err))
-            del self.con_list[self.con_index]
-            del self.server_list[self.con_index]
-            if len(self.con_list) == 0:
-                logger.error('All server failed, process will exit')
-                return 'fail'
-            else:
-                self.con_index = 0
-                return 'retry'
+        elif self.load_balance == 'random':
+            try:
+                self.con_index = random.randint(0, len(self.server_list) - 1)
+                cur_con = httplib.HTTPConnection(
+                    self.server_list[self.con_index])
+                cur_con.request('POST', "/BertService/inference", request_msg,
+                                {"Content-Type": "application/json"})
+                response = cur_con.getresponse()
+                response_msg = response.read()
+                response_msg = json.loads(response_msg)
+
+                return response_msg
+            except BaseException as err:
+
+                logger.warning("Infer Error with server {} : {}".format(
+                    self.server_list[self.con_index], err))
+                if len(self.server_list) == 0:
+                    logger.error('All server failed, process will exit')
+                    return 'fail'
+                else:
+                    self.con_index = 0
+                    return 'retry'
 
     def encode(self, text):
         if type(text) != list:
@@ -105,14 +130,22 @@ class BertService():
             mask_list = batch[0][3].reshape(-1).tolist()
             for si in range(self.batch_size):
                 instance_dict = {}
-                instance_dict["token_ids"] = token_list[si * self.max_seq_len:(
-                    si + 1) * self.max_seq_len]
-                instance_dict["sentence_type_ids"] = sent_list[
-                    si * self.max_seq_len:(si + 1) * self.max_seq_len]
-                instance_dict["position_ids"] = pos_list[si * self.max_seq_len:(
-                    si + 1) * self.max_seq_len]
-                instance_dict["input_masks"] = mask_list[si * self.max_seq_len:(
-                    si + 1) * self.max_seq_len]
+                instance_dict["token_ids"] = token_list[si *
+                                                        self.max_seq_len:(si +
+                                                                          1) *
+                                                        self.max_seq_len]
+                instance_dict["sentence_type_ids"] = sent_list[si *
+                                                               self.max_seq_len:
+                                                               (si + 1) *
+                                                               self.max_seq_len]
+                instance_dict["position_ids"] = pos_list[si *
+                                                         self.max_seq_len:(si +
+                                                                           1) *
+                                                         self.max_seq_len]
+                instance_dict["input_masks"] = mask_list[si *
+                                                         self.max_seq_len:(si +
+                                                                           1) *
+                                                         self.max_seq_len]
                 instance_dict["max_seq_len"] = self.max_seq_len
                 instance_dict["emb_size"] = self.embedding_size
                 request.append(instance_dict)
@@ -151,14 +184,20 @@ class BertService():
 
 def test():
 
-    bc = BertService(
-        model_name='bert_uncased_L-12_H-768_A-12',
-        emb_size=768,
-        show_ids=True,
-        do_lower_case=True)
-    bc.connect('127.0.0.1', 8010)
-    result = bc.encode([["As long as"], ])
-    print(result[0])
+    bc = BertService(model_name='bert_uncased_L-12_H-768_A-12',
+                     emb_size=768,
+                     show_ids=False,
+                     do_lower_case=True)
+    bc.connect_all_server([
+        '10.255.135.34:8010', '10.255.135.34:8011', '10.255.135.34:8012',
+        '10.255.135.34:8013', '10.255.135.34:8014', '10.255.135.34:8015',
+        '10.255.135.34:8016', '10.255.135.34:8017'
+    ])
+
+    for i in range(1000):
+        text = [["As long as"] for i in range(256)]
+        result = bc.encode(text)
+    #print(result[0])
     bc.close()
 
 
