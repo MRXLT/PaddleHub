@@ -34,6 +34,7 @@ from paddlehub.common.downloader import default_downloader
 from paddlehub.module import module_desc_pb2
 from paddlehub.common.dir import CONF_HOME
 from paddlehub.module import check_info_pb2
+from paddlehub.common.hub_server import CacheUpdater
 from paddlehub.module.signature import Signature, create_signature
 from paddlehub.module.checker import ModuleChecker
 from paddlehub.module.manager import default_module_manager
@@ -144,6 +145,7 @@ class Module(object):
         else:
             lock.flock(fp_lock, lock.LOCK_UN)
             raise ValueError("Module initialized parameter is empty")
+        CacheUpdater(name, version).start()
 
     def _init_with_name(self, name, version=None):
         log_msg = "Installing %s module" % name
@@ -155,9 +157,10 @@ class Module(object):
             module_name=name, module_version=version, extra=extra)
         if not result:
             logger.error(tips)
-            exit(1)
-        logger.info(tips)
-        self._init_with_module_file(module_dir[0])
+            raise RuntimeError(tips)
+        else:
+            logger.info(tips)
+            self._init_with_module_file(module_dir[0])
 
     def _init_with_url(self, url):
         utils.check_url(url)
@@ -165,8 +168,9 @@ class Module(object):
             url, save_path=".")
         if not result:
             logger.error(tips)
-            exit(1)
-        self._init_with_module_file(module_dir)
+            raise RuntimeError(tips)
+        else:
+            self._init_with_module_file(module_dir)
 
     def _dump_processor(self):
         import inspect
