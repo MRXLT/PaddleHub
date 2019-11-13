@@ -151,6 +151,7 @@ class BertService():
         start = time.time()
         request_time = 0
         result = []
+        #
         for run_step, batch in enumerate(data_generator(), start=1):
             request = []
             copy_start = time.time()
@@ -181,6 +182,7 @@ class BertService():
                 request.append(instance_dict)
             copy_time = time.time() - copy_start
             #request
+
             request = {"instances": request}
             request_msg = json.dumps(request)
             if self.show_ids:
@@ -196,7 +198,7 @@ class BertService():
                 else:
                     logger.error('Retry failed')
                     break
-
+            #
             for msg in response_msg["instances"]:
                 for sample in msg["instances"]:
                     result.append(sample["values"])
@@ -205,6 +207,7 @@ class BertService():
             request_time += time.time() - request_start
         total_time = time.time() - start
         start = time.time()
+        #
         if self.profile:
             return [
                 total_time, request_time, response_msg['op_time'],
@@ -227,17 +230,14 @@ def test():
                      show_ids=False,
                      do_lower_case=True,
                      process_id=process_id)
-    '''
-    bc.connect_all_server(['10.255.135.34:8010', '10.255.135.34:8011',
-        '10.255.135.34:8012', '10.255.135.34:8013', '10.255.135.34:8014',
-        '10.255.135.34:8015', '10.255.135.34:8016', '10.255.135.34:8017'])
-    '''
+
     bc.connect_all_server([
-        '10.199.240.57:8010', '10.199.240.57:8011', '10.199.240.57:8012',
-        '10.199.240.57:8013'
+        '127.0.0.1:8010',
     ])
     for i in range(1000):
-        text = [["As long as"] for i in range(256)]
+        text = [
+            ["As long as"],
+        ]
         result = bc.encode(text)
     #print(result[0])
     bc.close()
