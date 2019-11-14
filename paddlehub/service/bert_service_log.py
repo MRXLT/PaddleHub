@@ -4,6 +4,7 @@ import time
 import numpy as np
 import paddlehub as hub
 import json
+import random
 from paddlehub.common.logger import logger
 
 _ver = sys.version_info
@@ -23,7 +24,8 @@ class BertService():
                  model_name="bert_uncased_L-12_H-768_A-12",
                  emb_size=768,
                  show_ids=False,
-                 do_lower_case=True):
+                 do_lower_case=True,
+                 process_id=0):
         self.reader_flag = False
         self.batch_size = 16
         self.embedding_size = emb_size
@@ -34,8 +36,10 @@ class BertService():
         self.do_lower_case = do_lower_case
         self.con_list = []
         self.con_index = 0
-        self.load_balance = 'random_robin'
+        self.load_balance = 'bind'
         self.server_list = []
+        self.process_id = process_id
+        self.retry = 3
 
     def connect(self, ip='127.0.0.1', port=8010):
         self.server_list.append(ip + ':' + str(port))
@@ -59,33 +63,84 @@ class BertService():
                 do_lower_case=self.do_lower_case)
             self.reader_flag = True
 
-        return self.reader.data_generator(
-            batch_size=self.batch_size, phase='predict', data=text)
+        return self.reader.data_generator(batch_size=self.batch_size,
+                                          phase='predict',
+                                          data=text)
 
     def infer(self, request_msg):
+        if self.load_balance == 'round_robin':
+            try:
+                cur_con = httplib.HTTPConnection(
+                    self.server_list[self.con_index])
+                cur_con.request('POST', "/BertService/inference", request_msg,
+                                {"Content-Type": "application/json"})
+                response = cur_con.getresponse()
+                response_msg = response.read()
+                response_msg = json.loads(response_msg)
+                self.con_index += 1
+                self.con_index = self.con_index % len(self.con_list)
+                return response_msg
 
-        try:
-            cur_con = self.con_list[self.con_index]
-            cur_con.request('POST', "/BertService/inference", request_msg,
-                            {"Content-Type": "application/json"})
-            response = cur_con.getresponse()
-            response_msg = response.read()
-            response_msg = json.loads(response_msg)
-            self.con_index += 1
-            self.con_index = self.con_index % len(self.con_list)
-            return response_msg
+            except BaseException as err:
+                logger.warning("Infer Error with server {} : {}".format(
+                    self.server_list[self.con_index], err))
+                if len(self.server_list) == 0:
+                    logger.error('All server failed, process will exit')
+                    return 'fail'
+                else:
+                    self.con_index += 1
+                    return 'retry'
 
-        except BaseException as err:
-            logger.warning("Infer Error with server {} : {}".format(
-                self.server_list[self.con_index], err))
-            del self.con_list[self.con_index]
-            del self.server_list[self.con_index]
-            if len(self.con_list) == 0:
-                logger.error('All server failed, process will exit')
-                return 'fail'
-            else:
-                self.con_index = 0
-                return 'retry'
+        elif self.load_balance == 'random':
+            try:
+                random.seed()
+                self.con_index = random.randint(0, len(self.server_list) - 1)
+                logger.info(self.con_index)
+                cur_con = httplib.HTTPConnection(
+                    self.server_list[self.con_index])
+                cur_con.request('POST', "/BertService/inference", request_msg,
+                                {"Content-Type": "application/json"})
+                response = cur_con.getresponse()
+                response_msg = response.read()
+                response_msg = json.loads(response_msg)
+
+                return response_msg
+            except BaseException as err:
+
+                logger.warning("Infer Error with server {} : {}".format(
+                    self.server_list[self.con_index], err))
+                if len(self.server_list) == 0:
+                    logger.error('All server failed, process will exit')
+                    return 'fail'
+                else:
+                    self.con_index = random.randint(0,
+                                                    len(self.server_list) - 1)
+                    return 'retry'
+
+        elif self.load_balance == 'bind':
+
+            try:
+                self.con_index = int(self.process_id) % len(self.server_list)
+                cur_con = httplib.HTTPConnection(
+                    self.server_list[self.con_index])
+                cur_con.request('POST', "/BertService/inference", request_msg,
+                                {"Content-Type": "application/json"})
+                response = cur_con.getresponse()
+                response_msg = response.read()
+                response_msg = json.loads(response_msg)
+
+                return response_msg
+            except BaseException as err:
+
+                logger.warning("Infer Error with server {} : {}".format(
+                    self.server_list[self.con_index], err))
+                if len(self.server_list) == 0:
+                    logger.error('All server failed, process will exit')
+                    return 'fail'
+                else:
+                    self.con_index = random.randint(0,
+                                                    len(self.server_list) - 1)
+                    return 'retry'
 
     def encode(self, text):
         if type(text) != list:
@@ -96,6 +151,7 @@ class BertService():
         start = time.time()
         request_time = 0
         result = []
+        #
         for run_step, batch in enumerate(data_generator(), start=1):
             request = []
             copy_start = time.time()
@@ -105,37 +161,53 @@ class BertService():
             mask_list = batch[0][3].reshape(-1).tolist()
             for si in range(self.batch_size):
                 instance_dict = {}
-                instance_dict["token_ids"] = token_list[si * self.max_seq_len:(
-                    si + 1) * self.max_seq_len]
-                instance_dict["sentence_type_ids"] = sent_list[
-                    si * self.max_seq_len:(si + 1) * self.max_seq_len]
-                instance_dict["position_ids"] = pos_list[si * self.max_seq_len:(
-                    si + 1) * self.max_seq_len]
-                instance_dict["input_masks"] = mask_list[si * self.max_seq_len:(
-                    si + 1) * self.max_seq_len]
+                instance_dict["token_ids"] = token_list[si *
+                                                        self.max_seq_len:(si +
+                                                                          1) *
+                                                        self.max_seq_len]
+                instance_dict["sentence_type_ids"] = sent_list[si *
+                                                               self.max_seq_len:
+                                                               (si + 1) *
+                                                               self.max_seq_len]
+                instance_dict["position_ids"] = pos_list[si *
+                                                         self.max_seq_len:(si +
+                                                                           1) *
+                                                         self.max_seq_len]
+                instance_dict["input_masks"] = mask_list[si *
+                                                         self.max_seq_len:(si +
+                                                                           1) *
+                                                         self.max_seq_len]
                 instance_dict["max_seq_len"] = self.max_seq_len
                 instance_dict["emb_size"] = self.embedding_size
                 request.append(instance_dict)
             copy_time = time.time() - copy_start
             #request
+
             request = {"instances": request}
             request_msg = json.dumps(request)
             if self.show_ids:
                 logger.info(request_msg)
             request_start = time.time()
             response_msg = self.infer(request_msg)
+            retry = 0
             while type(response_msg) == str and response_msg == 'retry':
                 logger.info('Try to connect another servers')
                 response_msg = self.infer(request_msg)
-
+                if retry < self.retry:
+                    retry += 1
+                else:
+                    logger.error('Retry failed')
+                    break
+            #
             for msg in response_msg["instances"]:
                 for sample in msg["instances"]:
                     result.append(sample["values"])
-
+            retry = 0
             #request end
             request_time += time.time() - request_start
         total_time = time.time() - start
         start = time.time()
+        #
         if self.profile:
             return [
                 total_time, request_time, response_msg['op_time'],
@@ -151,14 +223,23 @@ class BertService():
 
 def test():
 
-    bc = BertService(
-        model_name='bert_uncased_L-12_H-768_A-12',
-        emb_size=768,
-        show_ids=True,
-        do_lower_case=True)
-    bc.connect('127.0.0.1', 8010)
-    result = bc.encode([["As long as"], ])
-    print(result[0])
+    process_id = sys.argv[1]
+
+    bc = BertService(model_name='bert_uncased_L-12_H-768_A-12',
+                     emb_size=768,
+                     show_ids=False,
+                     do_lower_case=True,
+                     process_id=process_id)
+
+    bc.connect_all_server([
+        '127.0.0.1:8010',
+    ])
+    for i in range(1000):
+        text = [
+            ["As long as"],
+        ]
+        result = bc.encode(text)
+    #print(result[0])
     bc.close()
 
 
