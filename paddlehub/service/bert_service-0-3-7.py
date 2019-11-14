@@ -63,15 +63,14 @@ class BertService():
                 do_lower_case=self.do_lower_case)
             self.reader_flag = True
 
-        return self.reader.data_generator(batch_size=self.batch_size,
-                                          phase='predict',
-                                          data=text)
+        return self.reader.data_generator(
+            batch_size=self.batch_size, phase='predict', data=text)
 
     def infer(self, request_msg):
         if self.load_balance == 'round_robin':
             try:
-                cur_con = httplib.HTTPConnection(
-                    self.server_list[self.con_index])
+                cur_con = httplib.HTTPConnection(self.server_list[
+                    self.con_index])
                 cur_con.request('POST', "/BertService/inference", request_msg,
                                 {"Content-Type": "application/json"})
                 response = cur_con.getresponse()
@@ -96,8 +95,8 @@ class BertService():
                 random.seed()
                 self.con_index = random.randint(0, len(self.server_list) - 1)
                 logger.info(self.con_index)
-                cur_con = httplib.HTTPConnection(
-                    self.server_list[self.con_index])
+                cur_con = httplib.HTTPConnection(self.server_list[
+                    self.con_index])
                 cur_con.request('POST', "/BertService/inference", request_msg,
                                 {"Content-Type": "application/json"})
                 response = cur_con.getresponse()
@@ -121,8 +120,8 @@ class BertService():
 
             try:
                 self.con_index = int(self.process_id) % len(self.server_list)
-                cur_con = httplib.HTTPConnection(
-                    self.server_list[self.con_index])
+                cur_con = httplib.HTTPConnection(self.server_list[
+                    self.con_index])
                 cur_con.request('POST', "/BertService/inference", request_msg,
                                 {"Content-Type": "application/json"})
                 response = cur_con.getresponse()
@@ -161,22 +160,14 @@ class BertService():
             mask_list = batch[0][3].reshape(-1).tolist()
             for si in range(self.batch_size):
                 instance_dict = {}
-                instance_dict["token_ids"] = token_list[si *
-                                                        self.max_seq_len:(si +
-                                                                          1) *
-                                                        self.max_seq_len]
-                instance_dict["sentence_type_ids"] = sent_list[si *
-                                                               self.max_seq_len:
-                                                               (si + 1) *
-                                                               self.max_seq_len]
-                instance_dict["position_ids"] = pos_list[si *
-                                                         self.max_seq_len:(si +
-                                                                           1) *
-                                                         self.max_seq_len]
-                instance_dict["input_masks"] = mask_list[si *
-                                                         self.max_seq_len:(si +
-                                                                           1) *
-                                                         self.max_seq_len]
+                instance_dict["token_ids"] = token_list[si * self.max_seq_len:(
+                    si + 1) * self.max_seq_len]
+                instance_dict["sentence_type_ids"] = sent_list[
+                    si * self.max_seq_len:(si + 1) * self.max_seq_len]
+                instance_dict["position_ids"] = pos_list[si * self.max_seq_len:(
+                    si + 1) * self.max_seq_len]
+                instance_dict["input_masks"] = mask_list[si * self.max_seq_len:(
+                    si + 1) * self.max_seq_len]
                 instance_dict["max_seq_len"] = self.max_seq_len
                 instance_dict["emb_size"] = self.embedding_size
                 request.append(instance_dict)
@@ -225,19 +216,16 @@ def test():
 
     process_id = sys.argv[1]
 
-    bc = BertService(model_name='bert_uncased_L-12_H-768_A-12',
-                     emb_size=768,
-                     show_ids=False,
-                     do_lower_case=True,
-                     process_id=process_id)
+    bc = BertService(
+        model_name='bert_uncased_L-12_H-768_A-12',
+        emb_size=768,
+        show_ids=False,
+        do_lower_case=True,
+        process_id=process_id)
 
-    bc.connect_all_server([
-        '127.0.0.1:8010',
-    ])
+    bc.connect_all_server(['127.0.0.1:8010', ])
     for i in range(1000):
-        text = [
-            ["As long as"],
-        ]
+        text = [["As long as"], ]
         result = bc.encode(text)
     #print(result[0])
     bc.close()

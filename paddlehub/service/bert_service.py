@@ -25,7 +25,8 @@ class BertService():
                  emb_size=768,
                  show_ids=False,
                  do_lower_case=True,
-                 process_id=0):
+                 process_id=0,
+                 retry=3):
         self.process_id = process_id
         self.reader_flag = False
         self.batch_size = 16
@@ -40,7 +41,7 @@ class BertService():
         self.load_balance = 'bind'
         self.server_list = []
         self.feed_var_names = ''
-        self.retry = 3
+        self.retry = retry
 
     def connect(self, server='127.0.0.1:8010'):
         self.server_list.append(server)
@@ -89,7 +90,7 @@ class BertService():
                 response_msg = response.read()
                 response_msg = json.loads(response_msg)
                 self.con_index += 1
-                self.con_index = self.con_index % len(self.con_list)
+                self.con_index = self.con_index % len(self.server_list)
                 return response_msg
 
             except BaseException as err:
@@ -220,14 +221,16 @@ class BertService():
             return result
 
     def close(self):
+        '''
         for con in self.con_list:
             con.close()
+        '''
 
 
 def test():
 
     bc = BertService(
-        model_name='roberta_wwm_ext_chinese_L-12_H-768_A-12',
+        model_name='bert_wwm_chinese_L-12_H-768_A-12',
         emb_size=768,
         show_ids=True,
         do_lower_case=True)
