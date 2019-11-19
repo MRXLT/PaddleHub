@@ -38,7 +38,7 @@ class BertService():
         self.do_lower_case = do_lower_case
         self.con_list = []
         self.con_index = 0
-        self.load_balance = 'bind'
+        self.load_balance = 'round_robin'
         self.server_list = []
         self.feed_var_names = ''
         self.retry = retry
@@ -204,6 +204,7 @@ class BertService():
                         self.retry))
                     break
             retry = 0
+            print(response_msg)
             for msg in response_msg["instances"]:
                 for sample in msg["instances"]:
                     result.append(sample["values"])
@@ -230,13 +231,13 @@ class BertService():
 def test():
 
     bc = BertService(
-        model_name='bert_wwm_chinese_L-12_H-768_A-12',
+        model_name='bert_chinese_L-12_H-768_A-12',
         emb_size=768,
         show_ids=True,
         do_lower_case=True)
     bc.connect('127.0.0.1:8010')
     result = bc.encode([["远上寒山石径斜"], ])
-    print(result[0])
+    #print(result[0])
     bc.close()
 
 
