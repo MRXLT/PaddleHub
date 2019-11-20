@@ -26,7 +26,8 @@ class BertService():
                  show_ids=False,
                  do_lower_case=True,
                  process_id=0,
-                 retry=3):
+                 retry=3,
+                 load_balance='bind'):
         self.process_id = process_id
         self.reader_flag = False
         self.batch_size = 16
@@ -38,7 +39,7 @@ class BertService():
         self.do_lower_case = do_lower_case
         self.con_list = []
         self.con_index = 0
-        self.load_balance = 'round_robin'
+        self.load_balance = load_balance
         self.server_list = []
         self.feed_var_names = ''
         self.retry = retry
@@ -204,7 +205,6 @@ class BertService():
                         self.retry))
                     break
             retry = 0
-            print(response_msg)
             for msg in response_msg["instances"]:
                 for sample in msg["instances"]:
                     result.append(sample["values"])
