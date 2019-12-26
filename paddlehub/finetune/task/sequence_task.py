@@ -19,13 +19,16 @@ from __future__ import print_function
 
 import time
 from collections import OrderedDict
+
 import numpy as np
+import paddle
 import paddle.fluid as fluid
 from paddlehub.finetune.evaluate import chunk_eval, calculate_f1
-from .basic_task import BasicTask
+from paddlehub.common.utils import version_compare
+from .base_task import BaseTask
 
 
-class SequenceLabelTask(BasicTask):
+class SequenceLabelTask(BaseTask):
     def __init__(self,
                  feature,
                  max_seq_len,
@@ -61,8 +64,12 @@ class SequenceLabelTask(BasicTask):
             return True
 
     def _build_net(self):
-        self.seq_len = fluid.layers.data(
-            name="seq_len", shape=[1], dtype='int64')
+        if version_compare(paddle.__version__, "1.6"):
+            self.seq_len = fluid.layers.data(
+                name="seq_len", shape=[-1], dtype='int64')
+        else:
+            self.seq_len = fluid.layers.data(
+                name="seq_len", shape=[1], dtype='int64')
         seq_len = fluid.layers.assign(self.seq_len)
 
         if self.add_crf:
@@ -209,3 +216,22 @@ class SequenceLabelTask(BasicTask):
         elif self.is_predict_phase:
             return [self.ret_infers.name] + [self.seq_len.name]
         return [output.name for output in self.outputs]
+
+    def _postprocessing(self, run_states):
+        id2label = {
+            val: key
+            for key, val in self._base_data_reader.label_map.items()
+        }
+        results = []
+        for batch_states in run_states:
+            batch_results = batch_states.run_results
+            batch_infers = batch_results[0].reshape([-1]).astype(
+                np.int32).tolist()
+            seq_lens = batch_results[1].reshape([-1]).astype(np.int32).tolist()
+            current_id = 0
+            for length in seq_lens:
+                seq_infers = batch_infers[current_id:current_id + length]
+                seq_result = list(map(id2label.get, seq_infers[1:-1]))
+                current_id += int(length)
+                results.append(seq_result)
+        return results

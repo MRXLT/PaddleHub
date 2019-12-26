@@ -20,18 +20,16 @@ from __future__ import print_function
 import argparse
 import json
 import os
-import sys
 import ast
 
 import six
 import pandas
-import numpy as np
+import imghdr
+import cv2
 
 from paddlehub.commands.base_command import BaseCommand, ENTRY
 from paddlehub.io.parser import yaml_parser, txt_parser
 from paddlehub.module.manager import default_module_manager
-from paddlehub.common import utils
-from paddlehub.common.arg_helper import add_argument, print_arguments
 import paddlehub as hub
 
 
@@ -69,7 +67,7 @@ class RunCommand(BaseCommand):
                 if not result:
                     return None
 
-        return hub.Module(module_dir=module_dir)
+        return hub.Module(directory=module_dir[0])
 
     def add_module_config_arg(self):
         configs = self.module.processor.configs()
@@ -103,7 +101,7 @@ class RunCommand(BaseCommand):
     def add_module_input_arg(self):
         module_type = self.module.type.lower()
         expect_data_format = self.module.processor.data_format(
-            self.module.default_signature.name)
+            self.module.default_signature)
         self.arg_input_group.add_argument(
             '--input_file',
             type=str,
@@ -150,7 +148,7 @@ class RunCommand(BaseCommand):
     def get_data(self):
         module_type = self.module.type.lower()
         expect_data_format = self.module.processor.data_format(
-            self.module.default_signature.name)
+            self.module.default_signature)
         input_data = {}
         if len(expect_data_format) == 1:
             key = list(expect_data_format.keys())[0]
@@ -159,6 +157,8 @@ class RunCommand(BaseCommand):
                                                    self.args.use_strip)
             else:
                 if module_type.startswith("cv"):
+                    if hasattr(self.args, "input_path"):
+                        self.check_file()
                     input_data[key] = [self.args.input_path]
                 elif module_type.startswith("nlp"):
                     input_data[key] = [self.args.input_text]
@@ -173,7 +173,7 @@ class RunCommand(BaseCommand):
 
     def check_data(self, data):
         expect_data_format = self.module.processor.data_format(
-            self.module.default_signature.name)
+            self.module.default_signature)
 
         if len(data.keys()) != len(expect_data_format.keys()):
             print(
@@ -201,6 +201,16 @@ class RunCommand(BaseCommand):
                     )
                     raise DataFormatError
 
+    def check_file(self):
+        file_path = self.args.input_path
+        if not os.path.exists(file_path):
+            raise RuntimeError("ERROR: File %s is not exist." % file_path)
+        if imghdr.what(file_path) is not None or \
+                cv2.VideoCapture(file_path).get(cv2.CAP_PROP_FRAME_COUNT) > 1:
+            return
+
+        raise RuntimeError("ERROR: Format of %s is illegal." % file_path)
+
     def execute(self, argv):
         if not argv:
             print("ERROR: Please specify a module name.\n")
@@ -222,35 +232,38 @@ class RunCommand(BaseCommand):
             return False
 
         # If the module is not executable, give an alarm and exit
-        if not self.module.default_signature:
+        if not self.module.is_runable:
             print("ERROR! Module %s is not executable." % module_name)
             return False
 
-        self.module.check_processor()
-        self.add_module_config_arg()
-        self.add_module_input_arg()
+        if self.module.code_version == "v2":
+            results = self.module.run_func(argv[1:])
+        else:
+            self.module.check_processor()
+            self.add_module_config_arg()
+            self.add_module_input_arg()
 
-        if not argv[1:]:
-            self.help()
-            return False
+            if not argv[1:]:
+                self.help()
+                return False
 
-        self.args = self.parser.parse_args(argv[1:])
+            self.args = self.parser.parse_args(argv[1:])
 
-        config = self.get_config()
-        data = self.get_data()
+            config = self.get_config()
+            data = self.get_data()
 
-        try:
-            self.check_data(data)
-        except DataFormatError:
-            self.help()
-            return False
+            try:
+                self.check_data(data)
+            except DataFormatError:
+                self.help()
+                return False
 
-        results = self.module(
-            sign_name=self.module.default_signature.name,
-            data=data,
-            use_gpu=self.args.use_gpu,
-            batch_size=self.args.batch_size,
-            **config)
+            results = self.module(
+                sign_name=self.module.default_signature,
+                data=data,
+                use_gpu=self.args.use_gpu,
+                batch_size=self.args.batch_size,
+                **config)
 
         if six.PY2:
             try:

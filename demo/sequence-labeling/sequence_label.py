@@ -37,7 +37,7 @@ args = parser.parse_args()
 
 if __name__ == '__main__':
     # Load Paddlehub ERNIE pretrained model
-    module = hub.Module(name="roberta_wwm_ext_chinese_L-24_H-1024_A-16")
+    module = hub.Module(name="ernie_tiny")
     inputs, outputs, program = module.context(
         trainable=True, max_seq_len=args.max_seq_len)
 
@@ -46,7 +46,9 @@ if __name__ == '__main__':
     reader = hub.reader.SequenceLabelReader(
         dataset=dataset,
         vocab_path=module.get_vocab_path(),
-        max_seq_len=args.max_seq_len)
+        max_seq_len=args.max_seq_len,
+        sp_model_path=module.get_spm_path(),
+        word_dict_path=module.get_word_dict_path())
 
     # Construct transfer learning network
     # Use "sequence_output" for token-level output.
@@ -69,9 +71,6 @@ if __name__ == '__main__':
 
     # Setup runing config for PaddleHub Finetune API
     config = hub.RunConfig(
-        log_interval=10,
-        eval_interval=300,
-        save_ckpt_interval=10000,
         use_data_parallel=args.use_data_parallel,
         use_pyreader=args.use_pyreader,
         use_cuda=args.use_gpu,
